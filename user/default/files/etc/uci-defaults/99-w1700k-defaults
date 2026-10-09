@@ -36,7 +36,9 @@ uci -q set system.@system[0].hostname='W1700K'
 uci -q delete network.lan.ipaddr
 uci -q add_list network.lan.ipaddr='192.168.8.1/24'
 
-# IPv6: keep the upstream defaults (RA server mode + DHCPv6 disabled).
+# IPv6: RA server mode, DHCPv6 disabled.
+uci -q set dhcp.lan.dhcpv6='disabled'
+uci -q set dhcp.lan.ra='server'
 
 
 # ------------------------------------------------------------
@@ -49,6 +51,7 @@ uci -q set luci.main.mediaurlbase='/luci-static/aurora'
 # Enable software and hardware flow offloading by default for the PPPoE router.
 uci -q set firewall.@defaults[0].flow_offloading='1'
 uci -q set firewall.@defaults[0].flow_offloading_hw='1'
+
 
 # ------------------------------------------------------------
 # Find Wi-Fi radios and create first-boot defaults
@@ -136,7 +139,6 @@ done
 if [ -n "$RADIO_2G" ]; then
 
     IFACE_2G="wifinet2g"
-    uci -q delete wireless.${IFACE_2G}
     uci set wireless.${IFACE_2G}=wifi-iface
 
     uci set wireless.${IFACE_2G}.device="${RADIO_2G}"
@@ -156,7 +158,6 @@ fi
 if [ -n "$RADIO_5G" ]; then
 
     IFACE_5G="wifinet5g"
-    uci -q delete wireless.${IFACE_5G}
     uci set wireless.${IFACE_5G}=wifi-iface
 
     uci set wireless.${IFACE_5G}.device="${RADIO_5G}"
@@ -176,7 +177,6 @@ fi
 if [ -n "$RADIO_6G" ]; then
 
     IFACE_6G="wifinet6g"
-    uci -q delete wireless.${IFACE_6G}
     uci set wireless.${IFACE_6G}=wifi-iface
 
     uci set wireless.${IFACE_6G}.device="${RADIO_6G}"

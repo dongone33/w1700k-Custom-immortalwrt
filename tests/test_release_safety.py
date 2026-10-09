@@ -35,7 +35,7 @@ class ReleaseTests(unittest.TestCase):
         data = {'target': 'airoha/an7581', 'version_code': 'r123-abcdef', 'profiles': {
             'gemtek_w1700k-ubi': {'supported_devices': ['gemtek,w1700k-ubi'],
                 'titles': [{'vendor': 'Gemtek', 'model': 'W1700K', 'variant': 'UBI'}],
-                'images': [{'name': IMAGE, 'type': 'sysupgrade', 'filesystem': 'squashfs', 'size': 20}]}}}
+                'images': [{'name': IMAGE, 'type': 'sysupgrade', 'filesystem': 'squashfs', 'size': 20}, {'name': 'chainload-uboot.itb', 'type': 'chainload-uboot'}]}}}
         (output / 'profiles.json').write_text(json.dumps(data))
         return output, data
 
@@ -82,13 +82,20 @@ class ReleaseTests(unittest.TestCase):
         for case in ('valid', 'wrong-config', 'two-devices', 'missing-config', 'missing-target',
                      'wrong-json', 'two-profiles', 'wrong-supported', 'wrong-title', 'wrong-name',
                      'two-images', 'empty', 'missing-image', 'missing-json', 'bad-json', 'size', 'metadata-duplicate',
-                     'metadata-name', 'filesystem', 'revision', 'other-target'):
+                     'metadata-name', 'filesystem', 'revision', 'other-target', 'symlink', 'missing-app', 'missing-translation', 'extra-json', 'no-upgrade'):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
                 out, data = self.fixture(base)
                 profile = data['profiles']['gemtek_w1700k-ubi']
                 config = base / '.config'
                 image = out / IMAGE
+                if case == 'symlink':
+                    image.rename(out / 'payload')
+                    image.symlink_to('payload')
+                if case == 'missing-app': config.write_text(CONFIG.replace('CONFIG_PACKAGE_luci-app-wifi7=y\n', ''))
+                if case == 'missing-translation': config.write_text(CONFIG.replace('CONFIG_PACKAGE_luci-i18n-wifi7-zh-cn=y\n', ''))
+                if case == 'extra-json': (base / 'openwrt_bin/targets/profiles.json').write_text('{}')
+                if case == 'no-upgrade': profile['images'].pop(0)
                 if case == 'wrong-config': config.write_text(CONFIG.replace('airoha', 'mediatek'))
                 if case == 'two-devices': config.write_text(CONFIG + 'CONFIG_TARGET_airoha_an7581_DEVICE_other=y\n')
                 if case == 'missing-config': config.unlink()
@@ -173,15 +180,3 @@ elif args[:2]!=['release','delete']: sys.exit(99)
                     packed = subprocess.run(['bash', '-e', '-c', block], cwd=base, env=env, capture_output=True, text=True)
                     self.assertEqual(packed.returncode, 0)
                     self.assertIn('cache.py ccache', packed.stdout)
-
-
-class LegacyRemovalTests(unittest.TestCase):
-    setUp = cache_tests.KeyTests.setUp
-    put = cache_tests.KeyTests.put
-    key = cache_tests.KeyTests.key
-    def test_rejected_admit(self):
-        self.assertFalse(hasattr(self.cache, 'admit'))
-        result = subprocess.run(['python3', str(SCRIPT), 'admit', str(self.root), str(Path(self.tmp.name)/'archive'), 'old'], text=True, capture_output=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('unknown cache mode', result.stderr)
-        self.assertFalse((Path(self.tmp.name)/'archive').exists())

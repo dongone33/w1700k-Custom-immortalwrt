@@ -19,26 +19,24 @@ sed -i -e 's/PRETTY_NAME="%D %V"/PRETTY_NAME="%D %C"/' \
 # luci-app-airoha-flowsense / luci-app-airoha-fancontrol
 # are maintained in yahuisme/packages with native LuCI UI,
 # built-in 100% i18n, and strict platform safety checks.
-PKG_REPO=/tmp/yahuisme-packages
+PKG_REPO=$(mktemp -d)
+trap 'rm -rf "$PKG_REPO"' EXIT
+
+# Checked-in, narrowly scoped hardware/power delta; never fetch fork patches.
+# Keep container ownership: the mounted profile belongs to the runner UID.
+cp -a --no-preserve=ownership "$DK_PROFILE/tree/." .
+patch -p1 --fuzz=0 < "$DK_PROFILE/patches/002-w1700k-cpufreq-resources.patch"
+# wifi-scripts installs directly from source; its Build/Prepare is empty.
+patch -p1 --fuzz=0 < "$DK_PROFILE/patches/920-wifi-non-mlo-ap-txpower.patch"
 if ! git clone --depth=1 https://github.com/yahuisme/packages.git "$PKG_REPO"; then
     echo "ERROR: Failed to clone user packages repo!"
     exit 1
 fi
+PKG_SHA=$(git -C "$PKG_REPO" rev-parse HEAD)
+echo "yahuisme/packages: $PKG_SHA"
 cp -r "$PKG_REPO/luci-app-wifi7" "$PKG_REPO/luci-app-airoha-npu" \
       "$PKG_REPO/luci-app-airoha-flowsense" \
       "$PKG_REPO/luci-app-airoha-fancontrol" package/
-
-# Explicit, reviewed local hardware delta; no build-time donor mirror.
-for patch in 745-net-pcs-airoha-extend-manual-rx-calib-to-E2-silicon.patch \
-             746-net-dsa-mt7530-pre-deassert-phy-reset-gpios-before-mdio-scan.patch \
-             940-pmdomain-airoha-cpu-pll-fallback.patch; do
-    cp -f "$DK_PROFILE/patches/$patch" target/linux/airoha/patches-6.18/
-done
-patch -p1 --fuzz=0 < "$DK_PROFILE/patches/002-w1700k-cpufreq-resources.patch"
-# wifi-scripts installs directly from source; its Build/Prepare is empty.
-patch -p1 --fuzz=0 < "$DK_PROFILE/patches/920-wifi-non-mlo-ap-txpower.patch"
-mkdir -p package/network/utils/iwinfo/patches
-cp -f "$DK_PROFILE/patches/999-fix-txpower-list.patch" package/network/utils/iwinfo/patches/
 
 # -------------------------------------------------
 # Existing W1700K custom files
@@ -48,30 +46,6 @@ mkdir -p feeds/luci/modules/luci-mod-status/patches
 cp -f "$DK_PROFILE/patches/998-single-wiphy.patch" \
     feeds/luci/modules/luci-mod-status/patches/998-single-wiphy.patch
 
-# Only the required firmware power-limit refresh; official mt76 now provides
-# the firmware SKU limit controls.
-mkdir -p package/kernel/mt76/patches
-cp -f "$DK_PROFILE/patches/911-mt76-mt7996-refresh-power-limits-on-txpower-changes.patch" \
-    package/kernel/mt76/patches/
-echo "mt76: official package + refresh power-limit patch"
-
-# -------------------------------------------------
-# Wireless fixes (quilt-applied)
-# 610 US power boost (self-maintained, applied after official 500/600):
-#   5.5G 30dBm DFS / 5.8G 5730-5895@160 30dBm (UNII-4 merged) /
-#   6G 30dBm no NO-IR. Matches the w1700k-openwrt regdb outcome
-#   (CN 2.4G/5.2G + US 5.2G already covered by official 600 patch).
-# 999 iwinfo txpower list (locally audited copy)
-# -------------------------------------------------
-mkdir -p package/firmware/wireless-regdb/patches
-
-if [ -f "$DK_PROFILE/patches/610-w1700k-us-power-30.patch" ]; then
-    cp -f "$DK_PROFILE/patches/610-w1700k-us-power-30.patch" package/firmware/wireless-regdb/patches/
-    echo "regdb patch: 610-w1700k-us-power-30.patch"
-else
-    echo "ERROR: regdb patch missing: 610-w1700k-us-power-30.patch" >&2
-    exit 1
-fi
 # Preserve the user's status LED colors, not donor platform enhancements.
 DTS=target/linux/airoha/dts/an7581-w1700k-ubi.dts
 sed -i -e 's/led-boot = &led_status_red;/led-boot = \&led_status_green;/' \
@@ -86,68 +60,41 @@ done
 # Install latest Aurora LuCI theme
 # -------------------------------------------------
 
-echo "Installing latest Aurora LuCI theme..."
-
-rm -rf package/luci-theme-aurora
-
-if ! git clone \
-    --depth=1 \
-    https://github.com/eamonxg/luci-theme-aurora.git \
-    package/luci-theme-aurora
-then
-    echo "ERROR: Failed to download Aurora theme!"
-    exit 1
-fi
-
-if [ ! -f package/luci-theme-aurora/Makefile ]; then
-    echo "ERROR: Aurora theme was downloaded, but Makefile is missing!"
-    exit 1
-fi
-
-echo "Aurora theme installed successfully."
-
-
-# -------------------------------------------------
-# Install Aurora theme configuration app
-# -------------------------------------------------
-
-echo "Installing Aurora theme configuration app..."
-
-rm -rf package/luci-app-aurora-config
-
-if ! git clone \
-    --depth=1 \
-    https://github.com/eamonxg/luci-app-aurora-config.git \
-    package/luci-app-aurora-config
-then
-    echo "ERROR: Failed to download Aurora theme configuration app!"
-    exit 1
-fi
-
-if [ ! -f package/luci-app-aurora-config/Makefile ]; then
-    echo "ERROR: Aurora theme configuration app was downloaded, but Makefile is missing!"
-    exit 1
-fi
-
-echo "Aurora theme configuration app installed successfully."
+for pkg in luci-theme-aurora luci-app-aurora-config; do
+    echo "Installing $pkg..."
+    rm -rf "package/$pkg"
+    if ! git clone --depth=1 "https://github.com/eamonxg/$pkg.git" "package/$pkg"; then
+        echo "ERROR: Failed to download $pkg!"
+        exit 1
+    fi
+    if [ ! -f "package/$pkg/Makefile" ]; then
+        echo "ERROR: $pkg was downloaded, but Makefile is missing!"
+        exit 1
+    fi
+    PKG_SHA=$(git -C "package/$pkg" rev-parse HEAD)
+    echo "$pkg: $PKG_SHA"
+done
 
 # 修改 Aurora 菜单式样（默认侧边栏 + 小圆角）
 TPL_DIR="package/luci-app-aurora-config/root/usr/share/aurora"
-[ -f "$TPL_DIR/default.template" ] || { echo "ERROR: Aurora default template missing" >&2; exit 1; }
-for tpl in "$TPL_DIR"/*.template; do
-    sed -i "s/nav_type '.*'/nav_type 'sidebar'/g; s/struct_radius_base '.*'/struct_radius_base '0.125rem'/g" "$tpl"
-    if ! grep -q "^[[:space:]]*option nav_type 'sidebar'[[:space:]]*$" "$tpl" \
-        || ! grep -q "^[[:space:]]*option struct_radius_base '0\.125rem'[[:space:]]*$" "$tpl"; then
-        echo "ERROR: Aurora preset template mismatch: $tpl" >&2
-        exit 1
-    fi
+if [ ! -f "$TPL_DIR/default.template" ]; then
+    echo "ERROR: Aurora default template missing: $TPL_DIR/default.template" >&2
+    exit 1
+fi
+sed -i \
+    -e "s/nav_type '.*'/nav_type 'sidebar'/g" \
+    -e "s/struct_radius_base '.*'/struct_radius_base '0.125rem'/g" \
+    "$TPL_DIR"/*.template
+for template in "$TPL_DIR"/*.template; do
+    for setting in "nav_type 'sidebar'" "struct_radius_base '0[.]125rem'"; do
+        if ! grep -Eq "^[[:space:]]*option ${setting}[[:space:]]*$" "$template"; then
+            echo "ERROR: Aurora preset did not apply: $template ($setting)" >&2
+            exit 1
+        fi
+    done
 done
 echo "theme-aurora nav preset applied!"
 
-
-# -------------------------------------------------
-# Add Chinese translations for overview temperature widget
-# -------------------------------------------------
 
 # The temperature & fan overview widget ships as 15_temperature.js inside
 # luci-mod-status. Core modules translate via luci-base's "base" domain, so
@@ -159,11 +106,19 @@ fi
 
 echo "Airoha LuCI configuration completed."
 
-# Feeds install indexed packages before the custom apps and theme
-# were injected. Drop the index so make defconfig discovers them
-# and their built-in luci-i18n-*-zh-cn packages.
+# Refresh the feeds-install index so make defconfig discovers the
+# newly imported applications and themes.
 rm -rf tmp/info 2>/dev/null || true
 rm -f tmp/.packageinfo 2>/dev/null || true
+
+
+# -------------------------------------------------
+# Wireless regdb customization; distro-specific delta follows official patches.
+# -------------------------------------------------
+mkdir -p package/firmware/wireless-regdb/patches
+
+cp -f "$DK_PROFILE/patches/610-w1700k-power-30.patch" package/firmware/wireless-regdb/patches/
+echo "regdb patch: 610-w1700k-power-30.patch"
 
 echo "=============================================="
 echo "Custom commands completed"

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Read-only admission; delete old generations only after a verified save.
 
-The standard writer owns the 10 GB repository budget, including unknown and
-legacy caches. Admission is read-only; save/readback precedes cleanup.
+The single standard writer counts every generation, ref and legacy entry,
+plus candidate and packaging headroom inside a 10 GB repository cap.
+Workflow concurrency excludes overlapping runs; inventory must be readable.
 """
 import json
 import os
@@ -11,8 +12,8 @@ import subprocess
 import sys
 import time
 
-SLOTS = {'tc-v3-ubi2-': 2_000_000_000, 'cc-v3-ubi2.': 3_000_000_000,
-         'dl-v3.': 2_200_000_000}
+SLOTS = {'tc-v3-ubi2-': 2_000_000_000,
+         'cc-v3-ubi2.': 3_000_000_000, 'dl-v3.': 2_200_000_000}
 BUDGET = 10_000_000_000
 HEADROOM = 64 * 1024 * 1024
 
@@ -35,8 +36,9 @@ def inv():
 
 
 def owner(key):
-    # Legacy OC keys share the standard tc prefix; count, never adopt/delete.
-    if key.startswith(('tc-v3-ubi2-oc-', 'cc-v3-ubi2-oc.')):
+    # Retired toolchain keys share the standard prefix; charge as legacy,
+    # never restore/save/prune them as standard generations.
+    if key.startswith('tc-v3-ubi2-oc-'):
         return None
     return next((p for p in sorted(SLOTS, key=len, reverse=True)
                  if key.startswith(p)), None)

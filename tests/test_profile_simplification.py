@@ -13,18 +13,18 @@ LUCI_DEPENDENCIES = (
 
 
 class ProfileSimplification(unittest.TestCase):
-    def test_luci_dependencies_owned_by_metapackage(self):
+    def test_explicit_luci_dependencies_match_shared_profile(self):
         config = (PROFILE / 'config.diff').read_text().splitlines()
         self.assertIn('CONFIG_PACKAGE_luci=y', config)
         for package in LUCI_DEPENDENCIES:
-            self.assertNotIn(f'CONFIG_PACKAGE_{package}=y', config)
+            self.assertIn(f'CONFIG_PACKAGE_{package}=y', config)
 
     def test_retired_phy_group_absent(self):
-        self.assertFalse((PROFILE / 'tree').exists())
+        self.assertFalse((PROFILE / 'tree/target/linux/generic/files/drivers/net/phy/rtl8261ce').exists())
         self.assertFalse((PROFILE / 'patches/999-net-phy-realtek-rtl8261ce.patch').exists())
         for name in ('custom.sh', 'config.diff'):
             self.assertNotIn('rtl8261ce', (PROFILE / name).read_text().lower())
-        self.assertNotIn('尚无完整 CE 替代', (PROFILE / 'patches/README.md').read_text())
+        self.assertNotIn('尚无完整 CE 替代', (ROOT / 'SOURCES.md').read_text())
         self.assertTrue((PROFILE / 'patches/998-single-wiphy.patch').is_file())
 
     @unittest.skipUnless(os.environ.get('IMMORTALWRT_SOURCE'), 'requires prepared official source')

@@ -46,4 +46,4 @@
 
 每日香港时间 12:00 自动构建，也可手动运行 Actions。仅发布 `sysupgrade.itb`。
 
-[补丁来源](user/default/patches/README.md)
+[补丁来源](SOURCES.md)

@@ -50,6 +50,7 @@ class WorkflowTests(unittest.TestCase):
                 nproc() { printf '4\\n'; }
                 make() {
                   printf 'make %s\\n' "$*" >> "$LOG"
+                  [ "$CCACHE_MAXSIZE" = 3G ] || { printf 'Expected CCACHE_MAXSIZE=3G, got %s\\n' "$CCACHE_MAXSIZE" >&2; return 98; }
                   if [[ "$*" == tools/ccache/compile* ]]; then
                     [ "$PRE" = 0 ] || return "$PRE"
                     cp "$STUB" staging_dir/host/bin/ccache
@@ -186,6 +187,27 @@ class WorkflowTests(unittest.TestCase):
                     self.assertFalse(output.exists())
                 else:
                     self.assertEqual(output.read_text(), 'key=tc-v3-ubi2-fixture-key\n')
+
+    def test_single_profile_config_matches_staged_profile(self):
+        workflow = yaml.safe_load(WORKFLOW.read_text())
+        self.assertEqual(workflow['jobs']['build']['env']['DK_PROFILE'], '/bld/user/default')
+        block = step('inputs')['run']
+        start = block.index('cp $DK_PROFILE/config.diff .config')
+        end = block.index('cp -r', start)
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = ROOT / 'user/default'
+            original = (profile / 'config.diff').read_bytes()
+            result = subprocess.run(['bash', '-e', '-c', block[start:end]], cwd=tmp,
+                                    env=dict(os.environ, DK_PROFILE=str(profile)),
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((Path(tmp) / '.config').read_bytes(),
+                             original + b'CONFIG_CCACHE_DIR="/ghcache"\n')
+            self.assertEqual((profile / 'config.diff').read_bytes(), original)
+            result = subprocess.run(['bash', '-e', '-c', block[start:end]], cwd=tmp,
+                                    env=dict(os.environ, DK_PROFILE=tmp),
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
 
     def test_unpack_creates_download_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:

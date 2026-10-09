@@ -53,7 +53,7 @@ jobs:
         [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]
         echo "IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
         docker run -d --name DK -v "$PWD/user:$DK_USER" -v "$PWD/openwrt_bin:$DK_BIN" -v "$PWD/ghcache:/ghcache" -v "$PWD/scripts:/cache-scripts:ro" -v "$PWD/docker:/builder-context:ro" -v "$PWD/tcarchive:/tcarchive" -v "$PWD/ccarchive:/ccarchive" -v "$PWD/dlarchive:/dlarchive" -v "$PWD/dlcache:/dlcache" "$IMAGE_ID" sleep infinity
-        BUILDER_FINGERPRINT=$(docker exec DK python3 /cache-scripts/builder_fingerprint.py /builder-context)
+        BUILDER_FINGERPRINT=$(docker exec -u 0 DK python3 /cache-scripts/builder_fingerprint.py /builder-context)
         [[ "$BUILDER_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]
         echo "BUILDER_FINGERPRINT=$BUILDER_FINGERPRINT" >> "$GITHUB_ENV"
         install -m 755 /dev/stdin /usr/local/bin/docker_exec <<'DKR'
@@ -75,8 +75,9 @@ jobs:
           if [ ! -d .git ]; then git init; fi
           git remote set-url origin $REPO_URL 2>&- || git remote add origin $REPO_URL
           git fetch origin "+refs/heads/$REPO_BRANCH:refs/remotes/origin/$REPO_BRANCH"
-          git checkout -f -B $REPO_BRANCH --track origin/$REPO_BRANCH
-          # Discard all pre-seeded fork files, feeds, ABI stamps and version caches.
+          git checkout -f -B "$REPO_BRANCH" "origin/$REPO_BRANCH"
+          git reset --hard "origin/$REPO_BRANCH"
+          # Remove ALL builder-preseeded patches, feeds, overlays and ABI files.
           git clean -ffdx
           mountpoint $DK_BIN || { echo "::error::not mounted" >&2; exit 1; }
           ln -s $DK_BIN bin && ln -s /dlcache dl
@@ -85,19 +86,15 @@ jobs:
           ./scripts/feeds install -a &>/dev/null || { echo "::error::feeds install failed"; exit 1; }
           cp $DK_PROFILE/config.diff .config
           echo "CONFIG_CCACHE_DIR=\"/ghcache\"" >> .config
-          cp -r $DK_PROFILE/files/ .
+          cp -r "$DK_PROFILE/files/" .
           bash $DK_PROFILE/custom.sh
-          # Log actual input revisions (Git bases, not local customization).
-          revision=$(git rev-parse HEAD)
-          printf "Source ImmortalWrt/%s: %s\n" "$REPO_BRANCH" "$revision"
+          # Log actual source/feed revisions after customization; fail on broken Git access.
+          revision=$(git rev-parse --verify HEAD)
+          printf "Source %s/%s: %s\n" "$REPO_URL" "$REPO_BRANCH" "$revision"
           for feed in feeds/*; do
             [ -e "$feed/.git" ] || continue
-            revision=$(git -C "$feed" rev-parse HEAD)
+            revision=$(git -C "$feed" rev-parse --verify HEAD)
             printf "Feed %s: %s\n" "${feed##*/}" "$revision"
-          done
-          for repo in /tmp/yahuisme-packages package/luci-theme-aurora package/luci-app-aurora-config; do
-            revision=$(git -C "$repo" rev-parse HEAD)
-            printf "Custom %s: %s\n" "${repo##*/}" "$revision"
           done
           make defconfig
           # Host LLVM is optional upstream; this lean image does not provide it.
@@ -146,7 +143,7 @@ jobs:
       run: |
         sudo chown -R "$(id -u):$(id -g)" openwrt_bin
         docker_exec DK cat "$DK_OPENWRT/.config" > final.config
-        python3 scripts/validate_firmware.py final.config openwrt_bin/targets
+        python3 scripts/validate_firmware.py final.config openwrt_bin/targets immortalwrt
         mkdir firmware
         install -t firmware openwrt_bin/targets/airoha/an7581/immortalwrt-airoha-an7581-gemtek_w1700k-ubi-squashfs-sysupgrade.itb openwrt_bin/targets/airoha/an7581/profiles.json
         PREFIX="W1700K-ImmortalWrt_"

@@ -6,18 +6,20 @@ RTL8261CE 使用官方 Realtek 驱动及 W1700K 默认选择的 `rtl8261c-firmwa
 
 ## 本地补丁
 
+以下路径相对于 `user/default/`。`tree/` 按构建目录结构注入，复制保留容器所有权；内核补丁沿用官方补丁应用顺序。
+
 | 文件 | 用途与来源 |
 | --- | --- |
-| `745-*`、`746-*` | E2 PCS RX 校准、MDIO 识别前的 PHY 复位处理；来源 OpenWRT-fanboy/OpenW1700k `972634e64d19cba0095b662a0bfd9561ebef635c` 的 `target/linux/airoha/patches-6.18/` |
-| `911-mt76-*` | 功率变更时刷新固件限制，沿用本项目对 OpenW1700k `0011-refresh-power-limits-on-txpower-changes` 的适配；SKU 启用使用官方 mt76，不保留已被官方吸收的 `910` 重叠实现 |
-| `610-w1700k-us-power-30.patch` | 在官方 regdb 补丁基础上追加本项目 US 30 dBm 配置 |
-| `999-fix-txpower-list.patch` | iwinfo 功率列表展示，来源上述 `972634e...` 的 `package/network/utils/iwinfo/patches/` |
-| `940-pmdomain-airoha-cpu-pll-fallback.patch`、`002-w1700k-cpufreq-resources.patch` | 标准 CPUFreq 兼容，来源上述 `972634e...` 的 940 C 代码及 W1700K 设备树资源；不重复引入 Kconfig，保留官方 attach_list、0–14 状态、500–1200 MHz 与调频策略，不超频 |
-| `998-single-wiphy.patch` | single-wiphy 无线设备的 LuCI 状态适配，仅涉及界面 |
+| `tree/target/linux/airoha/patches-6.18/745-*`、`746-*` | E2 PCS RX 校准、MDIO 识别前的 PHY 复位处理；来源 OpenWRT-fanboy/OpenW1700k `972634e64d19cba0095b662a0bfd9561ebef635c` 的 `target/linux/airoha/patches-6.18/` |
+| `tree/package/kernel/mt76/patches/911-*` | 功率变更时刷新固件限制，沿用本项目对 OpenW1700k `0011-refresh-power-limits-on-txpower-changes` 的适配；SKU 启用使用官方 mt76，不保留已被官方吸收的 `910` 重叠实现 |
+| `patches/610-w1700k-power-30.patch` | 在官方 regdb 500/600 补丁后追加本项目 US 30 dBm 配置；CN 与 US 低频段由官方 600 提供，补丁内容不与 OpenWrt 的 CN/US delta 混用 |
+| `tree/package/network/utils/iwinfo/patches/999-fix-txpower-list.patch` | iwinfo 功率列表展示，来源上述 `972634e...` 的 `package/network/utils/iwinfo/patches/` |
+| `tree/target/linux/airoha/patches-6.18/940-*`、`patches/002-w1700k-cpufreq-resources.patch` | 标准 CPUFreq 兼容，来源上述 `972634e...` 的 940 C 代码及 W1700K 设备树资源；不重复引入 Kconfig，保留官方 attach_list、0–14 状态、500–1200 MHz 与调频策略，不超频 |
+| `patches/998-single-wiphy.patch` | single-wiphy 无线设备的 LuCI 状态适配，仅涉及界面 |
 
 ## 非 MLO AP 功率补丁
 
-`920-wifi-non-mlo-ap-txpower.patch` 为本项目本地实现，由 `custom.sh` 在官方源码根目录直接应用。通过私有 hostapd 元数据，在 `bss_add` 后按 BSS 设置功率；功率变更沿用现有重启路径，失败记录日志并通知，不代表 netifd 已确认应用成功。
+`patches/920-wifi-non-mlo-ap-txpower.patch` 为本项目本地实现，由 `custom.sh` 在官方源码根目录直接应用。通过私有 hostapd 元数据，在 `bss_add` 后按 BSS 设置功率；功率变更沿用现有重启路径，失败记录日志并通知，不代表 netifd 已确认应用成功。
 
 支持范围是同一共享 PHY 上所有活动的索引 radio 均仅使用非 MLO AP。若其他 radio 混用 MLO 或非 AP 模式，其上游 PHY 全局设置仍可能覆盖功率，本补丁不声称解决此情况或提供 MLO 按链路控制。原生 ucode 测试验证命令、元数据与回调边界，不等于实机射频验证。
 

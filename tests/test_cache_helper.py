@@ -92,31 +92,51 @@ class HelperTests(unittest.TestCase):
     def deletes(self):
         return [c for c in self.snapshot()['calls'] if c[:2] == ['cache', 'delete']]
 
-    def test_three_gb_compiler_budget_and_pack_boundary(self):
+    def test_ccache_three_gb_compressed_cap(self):
         from unittest.mock import patch
         from test_cache_key import load, SCRIPT
-        from test_cache_workflow import step
         cache = load(SCRIPT)
         self.assertEqual(cache.LIMITS['ccache'], 3_000_000_000)
         self.assertEqual(h.SLOTS['cc-v3-ubi2.'], 3_000_000_000)
         self.assertEqual(h.BUDGET, 10_000_000_000)
         self.assertEqual(h.HEADROOM, 64 * 1024 * 1024)
-        self.assertIn('CCACHE_MAXSIZE=3G ', step('Compile firmware')['run'])
+        packed = self.base / 'packed'
+        archive = packed / 'ccache.tar.gz'
+        # Stub compression only: test the real pack/admission size boundaries
+        # with sparse compressed-output fixtures, never allocate multi-GB data.
         for size, accepted in ((3_000_000_000, True), (3_000_000_001, False)):
             with self.subTest(size=size):
-                self.reset([])
-                self.assertEqual(self.admit(size), accepted)
-                self.assertEqual(self.deletes(), [])
-                archive_dir = self.base / 'packed'
-                archive = archive_dir / 'ccache.tar.gz'
-                def tar(*args, **kwargs):
-                    with archive.open('wb') as stream:
-                        stream.truncate(size)
-                # Only the external compressor is mocked; real pack rejection
-                # and sparse-file admission exercise both independent caps.
-                with patch.object(cache.subprocess, 'run', side_effect=tar):
-                    cache.pack(self.base, archive_dir, 'ccache', 'unused')
+                def compress(args, **kwargs):
+                    self.assertEqual(args[0], 'tar')
+                    self.assertEqual(args[args.index('-cf') + 1], str(archive))
+                    with archive.open('wb') as out:
+                        out.truncate(size)
+                with patch.object(cache.subprocess, 'run', side_effect=compress):
+                    cache.pack(self.base, packed, 'ccache', 'unused')
                 self.assertEqual(archive.exists(), accepted)
+                self.reset([])
+                self.assertEqual(self.admit(size), accepted, self.log)
+                self.assertFalse(self.deletes())
+
+    def test_measured_download_replacement_fits_without_predeletion(self):
+        # API inventory and inner gzip from run 34922925962 (2026-09-15).
+        entries = [entry(1, 'tc-v3-ubi2-old', 1_568_383_907),
+                   entry(2, 'cc-v3-ubi2.old', 548_162_862),
+                   entry(3, 'tc-v3-ubi2-oc-old', 1_568_156_316),
+                   entry(4, 'cc-v3-ubi2-oc.old', 547_492_660),
+                   entry(5, 'dl-v3.old', 1_941_241_977)]
+        self.reset(entries)
+        self.assertTrue(self.admit(1_941_714_961, 'dl-v3.'), self.log)
+        self.assertFalse(self.deletes())
+        self.assertEqual(self.snapshot()['entries'], entries)
+
+    def test_legacy_inventory_growth_boundary(self):
+        size = 1_941_714_961
+        used = h.BUDGET - size - h.HEADROOM
+        for extra, expected in ((0, True), (1, False)):
+            self.reset([entry(1, 'retired-cache', used + extra)])
+            self.assertEqual(self.admit(size, 'dl-v3.'), expected)
+            self.assertFalse(self.deletes())
 
     def test_missing_zero_oversize_and_ownership(self):
         for size in (None, 0, h.SLOTS['cc-v3-ubi2.'] + 1):
@@ -128,21 +148,32 @@ class HelperTests(unittest.TestCase):
 
     def test_boundary_includes_margin_and_all_generations_refs(self):
         size = 1_000_000_000
-        prefix = 'cc-v3-ubi2.'
-        used = h.BUDGET - size - h.HEADROOM
-        for extra, expected in [(0, True), (1, False)]:
-            self.reset([entry(1, prefix+'old', used//2),
-                        entry(2, prefix+'older', used-used//2+extra, 'refs/heads/other')])
-            self.assertEqual(self.admit(size, prefix), expected)
-            self.assertFalse(self.deletes())
+        for prefix in h.SLOTS:
+            used = h.BUDGET - size - h.HEADROOM
+            for extra, expected in [(0, True), (1, False)]:
+                self.reset([entry(1, prefix+'old', used//2),
+                            entry(2, prefix+'older', used-used//2+extra, 'refs/heads/other')])
+                self.assertEqual(self.admit(size, prefix), expected)
+                self.assertFalse(self.deletes())
 
-    def test_unknown_entries_count_for_every_cache_tier(self):
+    def test_legacy_unknown_charged_to_repository_budget(self):
         for prefix in h.SLOTS:
             cap = h.BUDGET
             self.reset([entry(1, 'legacy', cap-1-h.HEADROOM)])
             self.assertTrue(self.admit(1, prefix))
             self.reset([entry(1, 'legacy', cap-h.HEADROOM)])
             self.assertFalse(self.admit(1, prefix))
+
+    def test_full_slots_decline_compiler_replacement_without_predeletion(self):
+        entries = [entry(i, prefix + 'old', size)
+                   for i, (prefix, size) in enumerate(h.SLOTS.items(), 1)]
+        self.reset(entries)
+        self.assertGreater(sum(h.SLOTS.values()) +
+                           h.SLOTS['cc-v3-ubi2.'] + h.HEADROOM, h.BUDGET)
+        self.assertFalse(self.admit(h.SLOTS['cc-v3-ubi2.']))
+        self.assertIn('repository budget exceeded', self.log)
+        self.assertFalse(self.deletes())
+        self.assertEqual(self.snapshot()['entries'], entries)
 
     def test_warm_inventory_and_cold_updates(self):
         # Explicit synthetic 4.5 GB warm inventory, representative not a live
@@ -167,15 +198,6 @@ class HelperTests(unittest.TestCase):
             entries.append(entry(len(entries)+1, prefix+'new', size+h.HEADROOM))
         self.assertLessEqual(sum(e['size_in_bytes'] for e in entries), 10_000_000_000)
 
-    def test_full_slots_decline_three_gb_replacement_without_deletion(self):
-        entries = [entry(index, prefix + 'old', size)
-                   for index, (prefix, size) in enumerate(h.SLOTS.items(), 1)]
-        self.reset(entries)
-        self.assertFalse(self.admit(3_000_000_000))
-        self.assertIn('candidate+margin=3067108864', self.log)
-        self.assertEqual(self.snapshot()['entries'], entries)
-        self.assertEqual(self.deletes(), [])
-
     def test_legacy_oc_counts_against_single_budget(self):
         size = 1_000_000_000
         self.reset([entry(1, 'tc-v3-ubi2-oc-old', h.BUDGET-size-h.HEADROOM)])
@@ -184,7 +206,7 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(self.deletes(), [])
 
     def test_paginated_inventory_and_admission_read_failure(self):
-        self.reset([entry(i, 'legacy'+str(i), 2_000_000_000) for i in range(1, 6)])
+        self.reset([entry(i, 'legacy'+str(i), 3_400_000_000) for i in range(1, 4)])
         self.assertFalse(self.admit(1))  # third entry on page two matters
         self.reset([], fail_reads=[1])
         self.assertFalse(self.admit(1))
