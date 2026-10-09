@@ -48,12 +48,12 @@ mkdir -p feeds/luci/modules/luci-mod-status/patches
 cp -f "$DK_PROFILE/patches/998-single-wiphy.patch" \
     feeds/luci/modules/luci-mod-status/patches/998-single-wiphy.patch
 
-# Only the two required firmware power-limit changes, never a broad mirror.
+# Only the required firmware power-limit refresh; official mt76 now provides
+# the firmware SKU limit controls.
 mkdir -p package/kernel/mt76/patches
-cp -f "$DK_PROFILE/patches/910-mt76-mt7996-enable-firmware-txpower-limit.patch" \
-    "$DK_PROFILE/patches/911-mt76-mt7996-refresh-power-limits-on-txpower-changes.patch" \
+cp -f "$DK_PROFILE/patches/911-mt76-mt7996-refresh-power-limits-on-txpower-changes.patch" \
     package/kernel/mt76/patches/
-echo "mt76: official package + two power-limit patches"
+echo "mt76: official package + refresh power-limit patch"
 
 # -------------------------------------------------
 # Wireless fixes (quilt-applied)

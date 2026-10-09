@@ -24,6 +24,18 @@ class OfficialBaselineTests(unittest.TestCase):
         self.assertIn('745-net-pcs', custom)
         self.assertIn('746-net-dsa', custom)
 
+    def test_only_mt76_refresh_delta_is_retained(self):
+        patches = ROOT / 'user/default/patches'
+        custom = (ROOT / 'user/default/custom.sh').read_text()
+        self.assertFalse(list(patches.glob('910-mt76-*.patch')))
+        self.assertNotIn('910-mt76-', custom)
+        self.assertIn('911-mt76-mt7996-refresh-power-limits-on-txpower-changes.patch', custom)
+        self.assertTrue((patches / '911-mt76-mt7996-refresh-power-limits-on-txpower-changes.patch').is_file())
+        # Upstream owns pending cancellation; keep independent per-BSS power logic.
+        power = (patches / '920-wifi-non-mlo-ap-txpower.patch').read_text()
+        self.assertNotIn('+\t\tpending.abort();', power)
+        self.assertIn('+function bss_txpower(', power)
+
     def test_retained_cleanup_is_idempotent(self):
         script = (ROOT / 'user/default/files/etc/uci-defaults/90-bridge-hw-offload').read_text()
         with tempfile.TemporaryDirectory() as tmp:
