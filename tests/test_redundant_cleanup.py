@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Execute removed cleanup against real temporary trees and isolated sysctls."""
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -52,6 +53,8 @@ class RedundantCleanup(unittest.TestCase):
         import re
         binary = shutil.which('busybox')
         assert binary, 'BusyBox is required'
+        chroot = shutil.which('chroot', path=os.pathsep.join((os.environ.get('PATH', ''), '/usr/sbin', '/sbin')))
+        assert chroot, 'chroot is required'
         busybox = Path(binary)
         libraries = re.findall(r'(/[^\s()]+)', subprocess.check_output(
             ['ldd', str(busybox)], text=True))
@@ -79,7 +82,7 @@ class RedundantCleanup(unittest.TestCase):
                             node.parent.mkdir(parents=True, exist_ok=True)
                             node.write_text('0\n')
                 for name in files:
-                    result = subprocess.run(['chroot', tmp, str(busybox), 'sysctl', '-p', name],
+                    result = subprocess.run([chroot, tmp, str(busybox), 'sysctl', '-p', name],
                                             capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
                 states.append({str(p.relative_to(jail / 'proc/sys')): p.read_text()
