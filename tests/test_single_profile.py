@@ -14,7 +14,7 @@ class SingleProfileTests(unittest.TestCase):
         workflow = yaml.safe_load(WORKFLOW.read_text())
         self.assertEqual(workflow['jobs']['build']['env']['DK_PROFILE'], '/bld/user/default')
         self.assertNotIn('user/current', WORKFLOW.read_text())
-        self.assertNotIn('rsync', step('Start build container')['run'])
+        self.assertNotIn('rsync', step('Prepare build environment')['run'])
         profile = ROOT/'user/default'
         original = {str(p.relative_to(profile)): p.read_bytes() for p in profile.rglob('*') if p.is_file()}
         with tempfile.TemporaryDirectory() as tmp:

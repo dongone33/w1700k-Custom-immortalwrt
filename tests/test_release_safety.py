@@ -126,7 +126,7 @@ class ReleaseTests(unittest.TestCase):
                     self.assertEqual((base / 'final.config').read_text(), CONFIG)
                     self.assertEqual((base / 'firmware' / IMAGE).read_bytes(), b'fixture-not-firmware')
                     notes = (base / 'firmware/release-notes.md').read_text()
-                    self.assertIn('固件分支：`master`', notes)
+                    self.assertIn('源码：[ImmortalWrt master](https://github.com/immortalwrt/immortalwrt)', notes)
                     self.assertIn('https://github.com/immortalwrt/immortalwrt', notes)
                     self.assertNotIn('ubi2', notes)
                 else:
@@ -176,7 +176,8 @@ elif args[:2]!=['release','delete']: sys.exit(99)
                 self.assertEqual(calls[0], ['api', 'repos/fixture/repo/git/ref/heads/main', '--jq', '.object.sha'])
                 if case == 'stale':
                     # A successful skipped publication leaves ordinary cache steps runnable.
-                    block = 'docker_exec() { printf "%s\\n" "$*"; }; sudo() { :; };\n' + render(step('Package build caches')['run'], {'steps.tc.outputs.cache-hit': 'true'})
+                    block = 'docker_exec() { printf "%s\\n" "$*"; }; sudo() { :; };\n' + render(step('Prepare build caches')['run'], {'steps.tc.outputs.cache-hit': 'true'})
+                    block = block.split('python3 scripts/cache_helper.py admit', 1)[0]
                     packed = subprocess.run(['bash', '-e', '-c', block], cwd=base, env=env, capture_output=True, text=True)
                     self.assertEqual(packed.returncode, 0)
                     self.assertIn('cache.py ccache', packed.stdout)
