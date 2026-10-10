@@ -151,17 +151,12 @@ jobs:
         echo "$VERSION" > firmware/version.txt
         RELEASE_NOTES="firmware/release-notes.md"
         cat > "$RELEASE_NOTES" <<EOF
-        ## Quantum Fiber / Gemtek W1700K ImmortalWrt — 标准版
+        ## Quantum Fiber / Gemtek W1700K ImmortalWrt
 
-        基于官方 ImmortalWrt master，使用标准 CPU 工作参数。
-
-        - 机型：Quantum Fiber / Gemtek W1700K
-        - 固件分支：\`master\`
+        - 源码：[ImmortalWrt master](https://github.com/immortalwrt/immortalwrt)
         - 构建时间：$(TZ=Asia/Hong_Kong date '+%Y-%m-%d %H:%M:%S %Z')
-        - 固件源码：https://github.com/immortalwrt/immortalwrt
-        - 本 Release 仅包含 \`sysupgrade.itb\` 升级镜像。
-
-        请确认设备为 W1700K，并在刷写前备份当前配置。
+        - 仅提供现行 UBI 布局的 sysupgrade.itb；刷写前请备份配置。
+        - 保留必要硬件兼容与功率定制。
         EOF
 
     # One standard writer: 10 GB repository budget including legacy entries.

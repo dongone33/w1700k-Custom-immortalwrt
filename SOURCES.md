@@ -14,7 +14,7 @@ RTL8261CE 使用官方 Realtek 驱动及 W1700K 默认选择的 `rtl8261c-firmwa
 | `tree/package/kernel/mt76/patches/911-*` | 功率变更时刷新固件限制，沿用本项目对 OpenW1700k `0011-refresh-power-limits-on-txpower-changes` 的适配；SKU 启用使用官方 mt76，不保留已被官方吸收的 `910` 重叠实现 |
 | `patches/610-w1700k-power-30.patch` | 在官方 regdb 500/600 补丁后追加本项目 US 30 dBm 配置；CN 与 US 低频段由官方 600 提供，补丁内容不与 OpenWrt 的 CN/US delta 混用 |
 | `tree/package/network/utils/iwinfo/patches/999-fix-txpower-list.patch` | iwinfo 功率列表展示，来源上述 `972634e...` 的 `package/network/utils/iwinfo/patches/` |
-| `tree/target/linux/airoha/patches-6.18/940-*`、`patches/002-w1700k-cpufreq-resources.patch` | 标准 CPUFreq 兼容，来源上述 `972634e...` 的 940 C 代码及 W1700K 设备树资源；不重复引入 Kconfig，保留官方 attach_list、0–14 状态、500–1200 MHz 与调频策略，不超频 |
+| `tree/target/linux/airoha/patches-6.18/940-*`、`patches/002-w1700k-cpufreq-resources.patch` | CPUFreq 兼容，来源上述 `972634e...` 的 940 C 代码及 W1700K 设备树资源；不重复引入 Kconfig，保留官方 attach_list、0–14 状态、500–1200 MHz 与调频策略 |
 | `patches/998-single-wiphy.patch` | single-wiphy 无线设备的 LuCI 状态适配，仅涉及界面 |
 
 ## 非 MLO AP 功率补丁
@@ -30,7 +30,7 @@ RTL8261CE 使用官方 Realtek 驱动及 W1700K 默认选择的 `rtl8261c-firmwa
 - 必要补丁应用失败必须停止构建，不跳过错误继续打包。
 - NAND 保持官方 50 MHz，不恢复 OC、额外网桥 flowtable、GRO/NPU 扩展、ramoops、mt76 统计/txfree 及 hostapd/Dropbear 等 fork 定制。
 - 保留中文 LuCI、Aurora、专属应用、WOL、ttyd、既定访问与无线设置，以及启动绿灯、故障红灯、运行白灯。
-- 频率设置入口按实际硬件能力显示，不伪造读数；标准 CPUFreq 兼容补丁恢复原有数据路径。
+- 频率设置入口按实际硬件能力显示，不伪造读数；CPUFreq 兼容补丁恢复原有数据路径。
 - 旧网桥脚本仅保留配置迁移清理，运行行为由官方 fw4 与网络栈负责。
 
 当前方案已通过用户实机测试，原失联问题已解决。该反馈不等于逐项硬件机制或射频功率测量；后续滚动更新仍需核对补丁兼容性。
