@@ -60,9 +60,9 @@ class CacheOrderTests(unittest.TestCase):
             start = next(i for i, s in enumerate(STEPS) if s.get('id') in ('tc_budget', 'cc_budget'))
             successful = True
             saves, logs = [], []
-            for step in STEPS[start:]:
-                if step['name'] == 'Publish firmware and prune releases':
-                    break  # Publication/status semantics live in test_publish_order.
+            end = next(i for i, s in enumerate(STEPS) if s.get('name') == 'Prune old download caches')
+            # Publication is independently tested; this harness covers caches only.
+            for step in STEPS[start:end + 1]:
                 if not successful or not condition(step.get('if', 'True')):
                     continue
                 if 'run' in step:
