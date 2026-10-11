@@ -20,7 +20,7 @@ REAL = [entry(1, 'tc-v3-ubi2-a8b702', 1564072318),
 
 class CacheOrderTests(unittest.TestCase):
     def run_tail(self, entries, warm=False, cc=535453831,
-                 tc=1575367741, fault='', fail_reads=(), delay=0):
+                 tc=1575367741, fault='', fail_reads=(), delay=0, dl=100):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / 'scripts').symlink_to(ROOT / 'scripts')
@@ -35,7 +35,7 @@ class CacheOrderTests(unittest.TestCase):
             (base / 'gh').write_text(gh)
             (base / 'gh').chmod(0o755)
             paths = {'cc': 'ccarchive/ccache.tar.gz', 'tc': 'tcarchive/toolchain.tar.gz', 'dl': 'dlarchive/dl.tar.gz'}
-            for kind, size in [('cc', cc), ('tc', tc), ('dl', 100)]:
+            for kind, size in [('cc', cc), ('tc', tc), ('dl', dl)]:
                 p = base / paths[kind]
                 p.parent.mkdir()
                 if size is not None:
@@ -86,7 +86,7 @@ class CacheOrderTests(unittest.TestCase):
                         continue
                     s = json.loads(state.read_text())
                     if fault != 'warning':
-                        size = (535186562 if cc == 535453831 else cc) if kind == 'cc' else tc if kind == 'tc' else 100
+                        size = (535186562 if cc == 535453831 else cc) if kind == 'cc' else tc if kind == 'tc' else dl
                         new = entry(100 + len(saves), key, size)
                         if fault == 'zero': new['size_in_bytes'] = 0
                         if fault == 'wrong_ref': new['ref'] = 'refs/heads/other'
@@ -96,6 +96,20 @@ class CacheOrderTests(unittest.TestCase):
                             s['entries'].append(new)
                     state.write_text(json.dumps(s))
             return saves, json.loads(state.read_text()), '\n'.join(logs)
+
+    def test_measured_download_tail_preserves_retired_oc(self):
+        # Historical OC entries still count toward the standard writer's budget.
+        entries = [entry(1, 'tc-v3-ubi2-old', 1568383907),
+                   entry(2, 'cc-v3-ubi2.old', 548162862),
+                   entry(3, 'tc-v3-ubi2-oc-old', 1568156316),
+                   entry(4, 'cc-v3-ubi2-oc.old', 547492660),
+                   entry(5, 'dl-v3.old', 1941241977)]
+        for warm in (False, True):
+            with self.subTest(warm=warm):
+                saves, state, log = self.run_tail(entries, warm=warm,
+                    cc=548360578, tc=1579480024, dl=1941714961)
+                self.assertEqual(saves, ['cc'] + ([] if warm else ['tc']) + ['dl'], log)
+                self.assertTrue({3, 4} <= {e['id'] for e in state['entries']})
 
     def test_recorded_inventory_seeds_caches_after_cc_retention(self):
         self.assertEqual(sum(e['size_in_bytes'] for e in REAL), 2633636319)
@@ -119,8 +133,10 @@ class CacheOrderTests(unittest.TestCase):
     def test_budget_denial_allows_smaller_later_candidate(self):
         saves, _, log = self.run_tail([entry(1, 'legacy', 8600000000)], cc=1500000000, tc=100)
         self.assertEqual(saves, ['tc', 'dl'], log)
-        saves, _, log = self.run_tail([entry(1, 'legacy', 8600000000)], cc=100, tc=2000000001)
-        self.assertEqual(saves, ['cc', 'dl'], log)
+        for legacy in (2600000000, 8600000000):
+            with self.subTest(legacy=legacy):
+                saves, _, log = self.run_tail([entry(1, 'legacy', legacy)], cc=100, tc=2000000001)
+                self.assertEqual(saves, ['cc', 'dl'], log)
 
     def test_missing_archive_and_admission_api_failure_can_continue(self):
         for options in ({'cc': None}, {'fail_reads': [1]}):
