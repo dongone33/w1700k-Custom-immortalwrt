@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from test_cache_workflow import ROOT, step
 import test_release_safety as releases
+from patch_source import PATCHES
 
 
 class OfficialBaselineTests(unittest.TestCase):
@@ -21,16 +22,16 @@ class OfficialBaselineTests(unittest.TestCase):
         self.assertNotIn('OpenWRT-fanboy', custom)
         self.assertNotIn('CPU_FREQ', custom)
         self.assertNotIn('bridge-flowtable', custom)
-        overlay = ROOT / 'user/default/tree/target/linux/airoha/patches-6.18'
+        overlay = PATCHES / 'tree/target/linux/airoha/patches-6.18'
         self.assertTrue(list(overlay.glob('745-net-pcs-*.patch')))
         self.assertTrue(list(overlay.glob('746-net-dsa-*.patch')))
 
     def test_only_mt76_refresh_delta_is_retained(self):
-        patches = ROOT / 'user/default/patches'
+        patches = PATCHES / 'patches'
         custom = (ROOT / 'user/default/custom.sh').read_text()
         self.assertFalse(list(patches.glob('910-mt76-*.patch')))
         self.assertNotIn('910-mt76-', custom)
-        overlay = ROOT / 'user/default/tree/package/kernel/mt76/patches'
+        overlay = PATCHES / 'tree/package/kernel/mt76/patches'
         self.assertFalse(list(overlay.glob('910-mt76-*.patch')))
         self.assertTrue((overlay / '911-mt76-mt7996-refresh-power-limits-on-txpower-changes.patch').is_file())
         # Upstream owns pending cancellation; keep independent per-BSS power logic.

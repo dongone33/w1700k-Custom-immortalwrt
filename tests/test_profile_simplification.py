@@ -1,6 +1,7 @@
 """Authorized profile pruning; prepared assertions use real native defconfig."""
 import os
 from pathlib import Path
+from patch_source import PATCHES
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,8 +25,8 @@ class ProfileSimplification(unittest.TestCase):
         self.assertFalse((PROFILE / 'patches/999-net-phy-realtek-rtl8261ce.patch').exists())
         for name in ('custom.sh', 'config.diff'):
             self.assertNotIn('rtl8261ce', (PROFILE / name).read_text().lower())
-        self.assertNotIn('尚无完整 CE 替代', (ROOT / 'SOURCES.md').read_text())
-        self.assertTrue((PROFILE / 'patches/998-single-wiphy.patch').is_file())
+        self.assertNotIn('尚无完整 CE 替代', (PATCHES / 'SOURCES.md').read_text())
+        self.assertTrue((PATCHES / 'patches/998-single-wiphy.patch').is_file())
 
     @unittest.skipUnless(os.environ.get('IMMORTALWRT_SOURCE'), 'requires prepared official source')
     def test_prepared_official_closure(self):
