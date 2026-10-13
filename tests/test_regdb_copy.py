@@ -25,13 +25,18 @@ class RegdbCopyTests(unittest.TestCase):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 profile = root / 'profile'
-                (profile / 'immortalwrt').mkdir(parents=True)
-                payload = (PATCHES / 'immortalwrt' / NAME).read_bytes()
+                (profile / 'patches').mkdir(parents=True)
+                payload = (PATCHES / 'patches' / NAME).read_bytes()
                 if case != 'missing-source':
-                    (profile / 'immortalwrt' / NAME).write_bytes(payload)
+                    (profile / 'patches' / NAME).write_bytes(payload)
                 if case == 'invalid-destination':
                     (root / 'package/firmware/wireless-regdb').mkdir(parents=True)
                     (root / 'package/firmware/wireless-regdb/patches').write_text('blocked')
+                if case == 'success':
+                    directory = root / 'package/firmware/wireless-regdb/patches'
+                    directory.mkdir(parents=True)
+                    for name in ('500-world.patch', '600-custom-change-txpower-and-dfs.patch', '700-keep.patch'):
+                        (directory / name).write_text(name)
                 prefix = 'cp() { return 74; };\n' if case == 'copy-failure' else ''
                 result = subprocess.run(['bash', '-ec', prefix + self.fragment() + '\necho CONTINUED'],
                                         cwd=root, env=dict(os.environ, PATCH_DIR=str(profile)),
@@ -39,6 +44,10 @@ class RegdbCopyTests(unittest.TestCase):
                 if case == 'success':
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn('CONTINUED', result.stdout)
+                    directory = root / 'package/firmware/wireless-regdb/patches'
+                    self.assertFalse((directory / '600-custom-change-txpower-and-dfs.patch').exists())
+                    for name in ('500-world.patch', '700-keep.patch'):
+                        self.assertEqual((directory / name).read_text(), name)
                     self.assertEqual((root / 'package/firmware/wireless-regdb/patches' / NAME).read_bytes(), payload)
                 else:
                     self.assertNotEqual(result.returncode, 0)

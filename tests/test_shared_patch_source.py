@@ -16,7 +16,7 @@ class SharedPatchSource(unittest.TestCase):
     def test_complete_customization_and_missing_payloads(self):
         source = Path(os.environ['TXPOWER_SOURCE'])
         payloads = [p.relative_to(PATCHES) for p in PATCHES.rglob('*.patch')]
-        used = [p for p in payloads if p.parts[0] not in ('openwrt', 'immortalwrt') or p.parts[0] == 'immortalwrt']
+        used = payloads
         for missing in (None, *used):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
                 base = Path(temporary)
@@ -43,6 +43,10 @@ class SharedPatchSource(unittest.TestCase):
                     destination = work / name
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_text(text)
+                regdb = work / 'package/firmware/wireless-regdb/patches'
+                regdb.mkdir(parents=True)
+                for name in ('500-world.patch', '600-custom-change-txpower-and-dfs.patch', '700-keep.patch'):
+                    (regdb / name).write_text(name)
                 # Source overlays use a directory copy: missing an individual
                 # required patch must not silently omit that behavior.
                 stub = '''git() {
@@ -68,9 +72,12 @@ export -f git
                 self.assertEqual(result.returncode == 0, missing is None, result.stdout + result.stderr)
                 self.assertEqual((base / 'calls').read_text(), 'packages\n')
                 if missing is None:
+                    self.assertFalse((regdb / '600-custom-change-txpower-and-dfs.patch').exists())
+                    for name in ('500-world.patch', '700-keep.patch'):
+                        self.assertEqual((regdb / name).read_text(), name)
                     for original in (PATCHES / 'tree').rglob('*.patch'):
                         self.assertEqual(original.read_bytes(), (work / original.relative_to(PATCHES / 'tree')).read_bytes())
-                    self.assertEqual((PATCHES / 'immortalwrt/610-w1700k-power-30.patch').read_bytes(),
+                    self.assertEqual((PATCHES / 'patches/610-w1700k-power-30.patch').read_bytes(),
                                      (work / 'package/firmware/wireless-regdb/patches/610-w1700k-power-30.patch').read_bytes())
                     self.assertEqual((PATCHES / 'patches/998-single-wiphy.patch').read_bytes(),
                                      (work / 'feeds/luci/modules/luci-mod-status/patches/998-single-wiphy.patch').read_bytes())

@@ -125,11 +125,13 @@ rm -f tmp/.packageinfo 2>/dev/null || true
 
 
 # -------------------------------------------------
-# Wireless regdb customization; distro-specific delta follows official patches.
+# Shared regdb customization follows the official 500 patch.
 # -------------------------------------------------
 mkdir -p package/firmware/wireless-regdb/patches
+# Shared 610 covers the CN/US customization previously provided by 600.
+rm -f package/firmware/wireless-regdb/patches/600-custom-change-txpower-and-dfs.patch
 
-cp -f "$PATCH_DIR/immortalwrt/610-w1700k-power-30.patch" package/firmware/wireless-regdb/patches/
+cp -f "$PATCH_DIR/patches/610-w1700k-power-30.patch" package/firmware/wireless-regdb/patches/
 echo "regdb patch: 610-w1700k-power-30.patch"
 
 echo "=============================================="
